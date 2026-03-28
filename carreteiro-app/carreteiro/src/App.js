@@ -100,32 +100,55 @@ function CalendarioDia({ value, onChange }) {
   )
 }
 
-// Seletor mês+ano — filtro do header
+// Seletor header: passo 1 = mes/ano, passo 2 = dias
 function SeletorMes({ mes, onChange }) {
   const [aberto, setAberto] = useState(false)
-  const [navAno, setNavAno] = useState(() => Number(mes.split('-')[0]))
+  const [passo, setPasso] = useState(1)
+  const parts = mes.split('-').map(Number)
+  const [navAno, setNavAno] = useState(() => parts[0])
+  const [navMesIdx, setNavMesIdx] = useState(() => parts[1] - 1)
   const ref = useRef()
 
   useEffect(() => {
-    const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) { setAberto(false); setPasso(1) } }
     document.addEventListener('mousedown', fn)
     return () => document.removeEventListener('mousedown', fn)
   }, [])
 
-  const [anoSel, mesSel] = mes.split('-').map(Number)
-  const label = `${MESES_PT[mesSel-1]} de ${anoSel}`
+  const partsAtual = mes.split('-').map(Number)
+  const anoSel = partsAtual[0], mesSel = partsAtual[1], diaSel = partsAtual[2] || null
 
-  const selMes = (i) => {
-    onChange(`${navAno}-${String(i+1).padStart(2,'0')}`)
-    setAberto(false)
+  const labelMes = diaSel
+    ? new Date(mes + 'T12:00:00').toLocaleDateString('pt-BR')
+    : `${MESES_PT[mesSel-1]} de ${anoSel}`
+
+  const selMes = (i) => { setNavMesIdx(i); setPasso(2) }
+
+  const selDia = (dia) => {
+    const m = String(navMesIdx + 1).padStart(2, '0')
+    const d = String(dia).padStart(2, '0')
+    onChange(`${navAno}-${m}-${d}`)
+    setAberto(false); setPasso(1)
+  }
+
+  const primeiroDia = new Date(navAno, navMesIdx, 1).getDay()
+  const ultimoDia = new Date(navAno, navMesIdx + 1, 0).getDate()
+  const cells = []
+  for (let i = 0; i < primeiroDia; i++) cells.push(null)
+  for (let d = 1; d <= ultimoDia; d++) cells.push(d)
+
+  const ehSel = (dia) => diaSel && anoSel === navAno && mesSel - 1 === navMesIdx && diaSel === dia
+  const ehHoje = (dia) => {
+    const h = new Date()
+    return h.getFullYear() === navAno && h.getMonth() === navMesIdx && h.getDate() === dia
   }
 
   return (
     <div className="cal-wrap" ref={ref}>
-      <button type="button" className="btn-cal-trigger" onClick={() => setAberto(v => !v)}>
-        {label} <span className="cal-arrow">▾</span>
+      <button type="button" className="btn-cal-trigger" onClick={() => { setAberto(v => !v); setPasso(1) }}>
+        {labelMes} <span className="cal-arrow">▾</span>
       </button>
-      {aberto && (
+      {aberto && passo === 1 && (
         <div className="cal-dropdown cal-mes-ano">
           <div className="cal-nav">
             <button type="button" onClick={() => setNavAno(a => a-1)}>‹</button>
@@ -140,6 +163,28 @@ function SeletorMes({ mes, onChange }) {
                 onClick={() => selMes(i)}
               >{nm.slice(0,3)}</div>
             ))}
+          </div>
+        </div>
+      )}
+      {aberto && passo === 2 && (
+        <div className="cal-dropdown">
+          <div className="cal-nav">
+            <button type="button" onClick={() => setPasso(1)}>‹</button>
+            <span>{MESES_PT[navMesIdx]} {navAno}</span>
+            <button type="button" onClick={() => { let m=navMesIdx+1,a=navAno; if(m>11){m=0;a++}; setNavMesIdx(m); setNavAno(a) }}>›</button>
+          </div>
+          <div className="cal-grid">
+            {DIAS_PT.map(d => <div key={d} className="cal-head">{d}</div>)}
+            {cells.map((dia, i) => (
+              <div
+                key={i}
+                className={`cal-day${!dia?' vazio':''} ${dia&&ehSel(dia)?' selecionado':''} ${dia&&ehHoje(dia)?' hoje':''}`}
+                onClick={() => dia && selDia(dia)}
+              >{dia||''}</div>
+            ))}
+          </div>
+          <div className="cal-footer">
+            <button type="button" onClick={() => { const h=new Date(); setNavAno(h.getFullYear()); setNavMesIdx(h.getMonth()); selDia(h.getDate()) }}>Hoje</button>
           </div>
         </div>
       )}
@@ -167,7 +212,8 @@ export default function App() {
 
   const fetchRegistros = useCallback(async () => {
     setLoading(true)
-    const [ano, m] = mes.split('-')
+    const partes = mes.split('-')
+    const ano = partes[0], m = partes[1]
     const inicio = `${ano}-${m}-01`
     const ultimoDia = new Date(Number(ano), Number(m), 0).getDate()
     const fim = `${ano}-${m}-${String(ultimoDia).padStart(2,'0')}`
