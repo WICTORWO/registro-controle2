@@ -4,8 +4,10 @@ import './App.css'
 
 const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const DIAS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
-
 const STATUS_OPTIONS = ['CAUTELA EXTRAVIADA','CONFERIDA','PENDENTE','OK']
+
+const fmt = (iso) => iso ? new Date(iso+'T12:00:00').toLocaleDateString('pt-BR') : ''
+const hoje = () => { const h = new Date(); return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}` }
 
 const badgeClass = (s) => {
   if (s === 'CAUTELA EXTRAVIADA') return 'badge extraviada'
@@ -16,24 +18,13 @@ const badgeClass = (s) => {
 
 const EMPTY_FORM = { data:'', cliente:'', quantidade:1, status:'CAUTELA EXTRAVIADA', cautela:'', motorista:'', observacoes:'' }
 
-// Calendário completo com dias — formulário
-function CalendarioDia({ value, onChange }) {
-  const [aberto, setAberto] = useState(false)
-  const [nav, setNav] = useState(() => {
+// Mini calendário reutilizável (inline, sem dropdown)
+function MiniCal({ value, dataMin, dataMax, onChange }) {
+  const init = () => {
     if (value) { const [a,m] = value.split('-'); return { ano:Number(a), mes:Number(m)-1 } }
     const h = new Date(); return { ano:h.getFullYear(), mes:h.getMonth() }
-  })
-  const ref = useRef()
-
-  useEffect(() => {
-    const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
-    document.addEventListener('mousedown', fn)
-    return () => document.removeEventListener('mousedown', fn)
-  }, [])
-
-  const label = value ? new Date(value+'T12:00:00').toLocaleDateString('pt-BR') : 'Selecionar data'
-  const primeiroDia = new Date(nav.ano, nav.mes, 1).getDay()
-  const ultimoDia = new Date(nav.ano, nav.mes+1, 0).getDate()
+  }
+  const [nav, setNav] = useState(init)
 
   const navMes = (delta) => setNav(prev => {
     let m = prev.mes+delta, a = prev.ano
@@ -42,57 +33,66 @@ function CalendarioDia({ value, onChange }) {
     return { ano:a, mes:m }
   })
 
-  const selecionar = (dia) => {
-    const m = String(nav.mes+1).padStart(2,'0')
-    const d = String(dia).padStart(2,'0')
-    onChange(`${nav.ano}-${m}-${d}`)
-    setAberto(false)
-  }
-
-  const ehSel = (dia) => {
-    if (!value) return false
-    const m = String(nav.mes+1).padStart(2,'0')
-    const d = String(dia).padStart(2,'0')
-    return value === `${nav.ano}-${m}-${d}`
-  }
-
-  const ehHoje = (dia) => {
-    const h = new Date()
-    return h.getFullYear()===nav.ano && h.getMonth()===nav.mes && h.getDate()===dia
-  }
-
+  const primeiroDia = new Date(nav.ano, nav.mes, 1).getDay()
+  const ultimoDia = new Date(nav.ano, nav.mes+1, 0).getDate()
   const cells = []
   for (let i = 0; i < primeiroDia; i++) cells.push(null)
   for (let d = 1; d <= ultimoDia; d++) cells.push(d)
 
+  const toIso = (dia) => `${nav.ano}-${String(nav.mes+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`
+
+  const ehSel = (dia) => value === toIso(dia)
+  const ehHoje = (dia) => hoje() === toIso(dia)
+  const ehDisabled = (dia) => {
+    const iso = toIso(dia)
+    if (dataMin && iso < dataMin) return true
+    if (dataMax && iso > dataMax) return true
+    return false
+  }
+
+  return (
+    <div className="mini-cal">
+      <div className="cal-nav">
+        <button type="button" onClick={() => navMes(-1)}>‹</button>
+        <span>{MESES_PT[nav.mes]} {nav.ano}</span>
+        <button type="button" onClick={() => navMes(1)}>›</button>
+      </div>
+      <div className="cal-grid">
+        {DIAS_PT.map(d => <div key={d} className="cal-head">{d}</div>)}
+        {cells.map((dia, i) => {
+          const dis = dia && ehDisabled(dia)
+          return (
+            <div
+              key={i}
+              className={`cal-day${!dia?' vazio':''}${dia&&ehSel(dia)?' selecionado':''}${dia&&ehHoje(dia)?' hoje':''}${dis?' desabilitado':''}`}
+              onClick={() => dia && !dis && onChange(toIso(dia))}
+            >{dia||''}</div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Calendário com dropdown — formulário
+function CalendarioDia({ value, onChange }) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef()
+  useEffect(() => {
+    const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
   return (
     <div className="cal-wrap" ref={ref}>
       <button type="button" className="btn-cal-input" onClick={() => setAberto(v => !v)}>
-        {label} <span className="cal-arrow">▾</span>
+        {value ? fmt(value) : 'Selecionar data'} <span className="cal-arrow">▾</span>
       </button>
       {aberto && (
         <div className="cal-dropdown">
-          <div className="cal-nav">
-            <button type="button" onClick={() => navMes(-1)}>‹</button>
-            <span>{MESES_PT[nav.mes]} {nav.ano}</span>
-            <button type="button" onClick={() => navMes(1)}>›</button>
-          </div>
-          <div className="cal-grid">
-            {DIAS_PT.map(d => <div key={d} className="cal-head">{d}</div>)}
-            {cells.map((dia, i) => (
-              <div
-                key={i}
-                className={`cal-day${!dia?' vazio':''}${dia&&ehSel(dia)?' selecionado':''}${dia&&ehHoje(dia)?' hoje':''}`}
-                onClick={() => dia && selecionar(dia)}
-              >{dia||''}</div>
-            ))}
-          </div>
+          <MiniCal value={value} onChange={(v) => { onChange(v); setAberto(false) }} />
           <div className="cal-footer">
-            <button type="button" onClick={() => {
-              const h = new Date()
-              setNav({ ano:h.getFullYear(), mes:h.getMonth() })
-              selecionar(h.getDate())
-            }}>Hoje</button>
+            <button type="button" onClick={() => { onChange(hoje()); setAberto(false) }}>Hoje</button>
           </div>
         </div>
       )}
@@ -100,7 +100,7 @@ function CalendarioDia({ value, onChange }) {
   )
 }
 
-// Seletor header: passo 1 = mes/ano, passo 2 = dias
+// Seletor mês+ano header — dois passos
 function SeletorMes({ mes, onChange }) {
   const [aberto, setAberto] = useState(false)
   const [passo, setPasso] = useState(1)
@@ -108,7 +108,6 @@ function SeletorMes({ mes, onChange }) {
   const [navAno, setNavAno] = useState(() => parts[0])
   const [navMesIdx, setNavMesIdx] = useState(() => parts[1] - 1)
   const ref = useRef()
-
   useEffect(() => {
     const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) { setAberto(false); setPasso(1) } }
     document.addEventListener('mousedown', fn)
@@ -117,30 +116,11 @@ function SeletorMes({ mes, onChange }) {
 
   const partsAtual = mes.split('-').map(Number)
   const anoSel = partsAtual[0], mesSel = partsAtual[1], diaSel = partsAtual[2] || null
-
-  const labelMes = diaSel
-    ? new Date(mes + 'T12:00:00').toLocaleDateString('pt-BR')
-    : `${MESES_PT[mesSel-1]} de ${anoSel}`
-
-  const selMes = (i) => { setNavMesIdx(i); setPasso(2) }
+  const labelMes = diaSel ? fmt(mes) : `${MESES_PT[mesSel-1]} de ${anoSel}`
 
   const selDia = (dia) => {
-    const m = String(navMesIdx + 1).padStart(2, '0')
-    const d = String(dia).padStart(2, '0')
-    onChange(`${navAno}-${m}-${d}`)
-    setAberto(false); setPasso(1)
-  }
-
-  const primeiroDia = new Date(navAno, navMesIdx, 1).getDay()
-  const ultimoDia = new Date(navAno, navMesIdx + 1, 0).getDate()
-  const cells = []
-  for (let i = 0; i < primeiroDia; i++) cells.push(null)
-  for (let d = 1; d <= ultimoDia; d++) cells.push(d)
-
-  const ehSel = (dia) => diaSel && anoSel === navAno && mesSel - 1 === navMesIdx && diaSel === dia
-  const ehHoje = (dia) => {
-    const h = new Date()
-    return h.getFullYear() === navAno && h.getMonth() === navMesIdx && h.getDate() === dia
+    const m = String(navMesIdx+1).padStart(2,'0'), d = String(dia).padStart(2,'0')
+    onChange(`${navAno}-${m}-${d}`); setAberto(false); setPasso(1)
   }
 
   return (
@@ -157,34 +137,117 @@ function SeletorMes({ mes, onChange }) {
           </div>
           <div className="cal-meses-grid">
             {MESES_PT.map((nm, i) => (
-              <div
-                key={i}
-                className={`cal-mes-item${i===mesSel-1&&navAno===anoSel?' selecionado':''}`}
-                onClick={() => selMes(i)}
-              >{nm.slice(0,3)}</div>
+              <div key={i} className={`cal-mes-item${i===mesSel-1&&navAno===anoSel?' selecionado':''}`}
+                onClick={() => { setNavMesIdx(i); setPasso(2) }}>{nm.slice(0,3)}</div>
             ))}
           </div>
         </div>
       )}
       {aberto && passo === 2 && (
         <div className="cal-dropdown">
-          <div className="cal-nav">
-            <button type="button" onClick={() => setPasso(1)}>‹</button>
-            <span>{MESES_PT[navMesIdx]} {navAno}</span>
-            <button type="button" onClick={() => { let m=navMesIdx+1,a=navAno; if(m>11){m=0;a++}; setNavMesIdx(m); setNavAno(a) }}>›</button>
+          <MiniCal
+            value={diaSel ? mes : null}
+            onChange={selDia}
+          />
+          <div className="cal-footer">
+            <button type="button" onClick={() => setPasso(1)}>← Voltar</button>
+            <button type="button" onClick={() => { const h=new Date(); setNavAno(h.getFullYear()); setNavMesIdx(h.getMonth()); selDia(h.getDate()) }}>Hoje</button>
           </div>
-          <div className="cal-grid">
-            {DIAS_PT.map(d => <div key={d} className="cal-head">{d}</div>)}
-            {cells.map((dia, i) => (
-              <div
-                key={i}
-                className={`cal-day${!dia?' vazio':''} ${dia&&ehSel(dia)?' selecionado':''} ${dia&&ehHoje(dia)?' hoje':''}`}
-                onClick={() => dia && selDia(dia)}
-              >{dia||''}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Painel de filtro de período
+function FiltroPeriodo({ dataInicio, dataFim, onAplicar, onLimpar }) {
+  const [aberto, setAberto] = useState(false)
+  const [inicio, setInicio] = useState(dataInicio || '')
+  const [fim, setFim] = useState(dataFim || '')
+  const ref = useRef()
+
+  useEffect(() => {
+    const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const ativo = dataInicio && dataFim
+
+  const aplicar = () => {
+    if (!inicio || !fim) return
+    onAplicar(inicio, fim)
+    setAberto(false)
+  }
+
+  const limpar = () => {
+    setInicio(''); setFim('')
+    onLimpar()
+    setAberto(false)
+  }
+
+  const atalhos = [
+    { label: 'Esta semana', fn: () => {
+      const h = new Date(), dia = h.getDay()
+      const seg = new Date(h); seg.setDate(h.getDate() - dia + 1)
+      const dom = new Date(seg); dom.setDate(seg.getDate() + 6)
+      const iso = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+      setInicio(iso(seg)); setFim(iso(dom))
+    }},
+    { label: 'Últimos 7 dias', fn: () => {
+      const fim = new Date(), ini = new Date()
+      ini.setDate(fim.getDate() - 6)
+      const iso = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+      setInicio(iso(ini)); setFim(iso(fim))
+    }},
+    { label: 'Este mês', fn: () => {
+      const h = new Date()
+      const a = h.getFullYear(), m = h.getMonth()+1
+      const ms = String(m).padStart(2,'0')
+      const ult = new Date(a, m, 0).getDate()
+      setInicio(`${a}-${ms}-01`); setFim(`${a}-${ms}-${String(ult).padStart(2,'0')}`)
+    }},
+  ]
+
+  return (
+    <div className="cal-wrap" ref={ref}>
+      <button
+        type="button"
+        className={`btn-filtro-periodo${ativo ? ' ativo' : ''}`}
+        onClick={() => setAberto(v => !v)}
+      >
+        {ativo ? `${fmt(dataInicio)} → ${fmt(dataFim)}` : 'Filtrar período'}
+        {ativo && <span className="filtro-dot" />}
+        <span className="cal-arrow">▾</span>
+      </button>
+
+      {aberto && (
+        <div className="filtro-dropdown">
+          <div className="filtro-atalhos">
+            {atalhos.map(a => (
+              <button key={a.label} type="button" className="btn-atalho" onClick={a.fn}>{a.label}</button>
             ))}
           </div>
-          <div className="cal-footer">
-            <button type="button" onClick={() => { const h=new Date(); setNavAno(h.getFullYear()); setNavMesIdx(h.getMonth()); selDia(h.getDate()) }}>Hoje</button>
+
+          <div className="filtro-cals">
+            <div className="filtro-cal-col">
+              <div className="filtro-cal-label">Data inicial</div>
+              <MiniCal value={inicio} dataMax={fim || undefined} onChange={setInicio} />
+              <div className="filtro-val">{inicio ? fmt(inicio) : 'Não selecionada'}</div>
+            </div>
+            <div className="filtro-sep" />
+            <div className="filtro-cal-col">
+              <div className="filtro-cal-label">Data final</div>
+              <MiniCal value={fim} dataMin={inicio || undefined} onChange={setFim} />
+              <div className="filtro-val">{fim ? fmt(fim) : 'Não selecionada'}</div>
+            </div>
+          </div>
+
+          <div className="filtro-actions">
+            <button type="button" className="btn-secondary" onClick={limpar}>Limpar</button>
+            <button type="button" className="btn-primary" onClick={aplicar} disabled={!inicio || !fim}>
+              Aplicar filtro
+            </button>
           </div>
         </div>
       )}
@@ -209,22 +272,29 @@ export default function App() {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
   })
+  const [periodoInicio, setPeriodoInicio] = useState('')
+  const [periodoFim, setPeriodoFim] = useState('')
 
   const fetchRegistros = useCallback(async () => {
     setLoading(true)
-    const partes = mes.split('-')
-    const ano = partes[0], m = partes[1]
-    const inicio = `${ano}-${m}-01`
-    const ultimoDia = new Date(Number(ano), Number(m), 0).getDate()
-    const fim = `${ano}-${m}-${String(ultimoDia).padStart(2,'0')}`
-    const { data, error } = await supabase
-      .from('registros').select('*')
-      .gte('data', inicio).lte('data', fim)
-      .order('data', { ascending: false })
+    let query = supabase.from('registros').select('*')
+
+    if (periodoInicio && periodoFim) {
+      query = query.gte('data', periodoInicio).lte('data', periodoFim)
+    } else {
+      const partes = mes.split('-')
+      const ano = partes[0], m = partes[1]
+      const inicio = `${ano}-${m}-01`
+      const ultimoDia = new Date(Number(ano), Number(m), 0).getDate()
+      const fim = `${ano}-${m}-${String(ultimoDia).padStart(2,'0')}`
+      query = query.gte('data', inicio).lte('data', fim)
+    }
+
+    const { data, error } = await query.order('data', { ascending: false })
     if (error) setErro('Erro ao carregar: ' + error.message)
     else { setRegistros(data || []); setErro('') }
     setLoading(false)
-  }, [mes])
+  }, [mes, periodoInicio, periodoFim])
 
   useEffect(() => { fetchRegistros() }, [fetchRegistros])
 
@@ -242,9 +312,7 @@ export default function App() {
     setFiltrados(lista)
   }, [registros, busca, filtroStatus])
 
-  const abrirNovo = () => {
-    setEditando(null); setForm(EMPTY_FORM); setFotoFile(null); setFotoPreview(''); setModalAberto(true)
-  }
+  const abrirNovo = () => { setEditando(null); setForm(EMPTY_FORM); setFotoFile(null); setFotoPreview(''); setModalAberto(true) }
 
   const abrirEditar = (r) => {
     setEditando(r.id)
@@ -298,15 +366,26 @@ export default function App() {
   const extraviadas = registros.filter(r => r.status === 'CAUTELA EXTRAVIADA').length
   const conferidas = registros.filter(r => r.status === 'CONFERIDA' || r.status === 'OK').length
 
+  const periodoAtivo = periodoInicio && periodoFim
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="header-left">
           <h1>Controle de Descontos</h1>
-          <span className="subtitle">Carreteiro</span>
+          <span className="subtitle">
+            Carreteiro
+            {periodoAtivo && <span className="periodo-tag"> · {fmt(periodoInicio)} até {fmt(periodoFim)}</span>}
+          </span>
         </div>
         <div className="header-right">
-          <SeletorMes mes={mes} onChange={setMes} />
+          {!periodoAtivo && <SeletorMes mes={mes} onChange={setMes} />}
+          <FiltroPeriodo
+            dataInicio={periodoInicio}
+            dataFim={periodoFim}
+            onAplicar={(ini, fim) => { setPeriodoInicio(ini); setPeriodoFim(fim) }}
+            onLimpar={() => { setPeriodoInicio(''); setPeriodoFim('') }}
+          />
           <button className="btn-primary" onClick={abrirNovo}>+ Novo registro</button>
         </div>
       </header>
@@ -340,7 +419,7 @@ export default function App() {
             <tbody>
               {filtrados.map(r => (
                 <tr key={r.id}>
-                  <td>{r.data ? new Date(r.data+'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                  <td>{r.data ? fmt(r.data) : '-'}</td>
                   <td>{r.cliente}</td>
                   <td className="center">{r.quantidade}</td>
                   <td><span className={badgeClass(r.status)}>{r.status}</span></td>
