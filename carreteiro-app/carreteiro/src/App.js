@@ -48,7 +48,8 @@ export default function App() {
     setLoading(true)
     const [ano, m] = mes.split('-')
     const inicio = `${ano}-${m}-01`
-    const fim = `${ano}-${m}-31`
+    const ultimoDia = new Date(Number(ano), Number(m), 0).getDate()
+    const fim = `${ano}-${m}-${String(ultimoDia).padStart(2, '0')}`
     const { data, error } = await supabase
       .from('registros')
       .select('*')
